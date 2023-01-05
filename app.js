@@ -1,109 +1,165 @@
+/*
+ *  Created a Table with name todo in the todoApplication.db file using the CLI.
+ */
+
 const express = require("express");
 const { open } = require("sqlite");
 const sqlite3 = require("sqlite3");
 const path = require("path");
 
-const dbPath = path.join(__dirname, "todoApplication.db");
+const databasePath = path.join(__dirname, "todoApplication.db");
 
 const app = express();
+
 app.use(express.json());
 
-let db = null;
+let database = null;
 
-const initializationDBServer = async () => {
+const initializeDbAndServer = async () => {
   try {
-    db = await open({
-      filename: dbPath,
+    database = await open({
+      filename: databasePath,
       driver: sqlite3.Database,
     });
-    app.listen(3000, () => {
-      console.log("server is running");
-    });
+
+    app.listen(3000, () =>
+      console.log("Server Running at http://localhost:3000/")
+    );
   } catch (error) {
-    console.log(`error in db ${error.message}`);
+    console.log(`DB Error: ${error.message}`);
     process.exit(1);
   }
 };
-initializationDBServer();
+
+initializeDbAndServer();
+
+const hasPriorityAndStatusProperties = (requestQuery) => {
+  return (
+    requestQuery.priority !== undefined && requestQuery.status !== undefined
+  );
+};
+
+const hasPriorityProperty = (requestQuery) => {
+  return requestQuery.priority !== undefined;
+};
+
+const hasStatusProperty = (requestQuery) => {
+  return requestQuery.status !== undefined;
+};
 
 app.get("/todos/", async (request, response) => {
-  const {
-    id,
-    todo,
-    category,
-    search_q = "",
-    priority,
-    status,
-    due_date,
-  } = request.query;
-  console.log(search_q);
-  if (status !== "") {
-    const requestQuery = `SELECT * FROM todo WHERE status = '${status}';`;
-    const dbSet = await db.all(requestQuery);
-    response.send(dbSet);
-  } else if (priority !== "") {
-    const requestQuery = `
-    SELECT 
-      * 
-    FROM 
-      todo 
-    WHERE 
-      priority='${priority}';`;
-    const dbSet = await db.all(requestQuery);
-    response.send(dbSet);
-  } else if (priority !== "" && status !== "") {
-    const requestQuery = `SELECT * FROM todo WHERE priority='${priority}' AND status='${status}';`;
-    const dbSet = await db.all(requestQuery);
-    response.send(dbSet);
-  } else if (category !== "") {
-    const requestQuery = `SELECT * FROM todo WHERE category='${category}';`;
-    const dbSet = await db.all(requestQuery);
-    response.send(dbSet);
-  } else if (category !== "" && status !== DONE) {
-    const requestQuery = `SELECT * FROM todo WHERE category='${category}' AND status = '${status}';`;
-    const dbSet = await db.all(requestQuery);
-    response.send(dbSet);
-  } else if (search_q !== "") {
-    const requestQuery = `SELECT * FROM todo WHERE todo LIKE '%${search_q}%';`;
-    const dbSet = await db.all(requestQuery);
-    response.send(dbSet);
-  } else if (category !== "" && priority !== "") {
-    const requestQuery = `SELECT * FROM todo WHERE category='${category}' AND priority='${priority}';`;
-    const dbSet = await db.all(requestQuery);
+  let data = null;
+  let getTodosQuery = "";
+  const { search_q = "", priority, status } = request.query;
 
-    response.send(dbSet);
-  } else {
-    response.status(400);
+  switch (true) {
+    case hasPriorityAndStatusProperties(request.query):
+      getTodosQuery = `
+      SELECT
+        *
+      FROM
+        todo 
+      WHERE
+        status = '${status}'
+        AND priority = '${priority}';`;
+      break;
+    case hasPriorityProperty(request.query):
+      getTodosQuery = `
+      SELECT
+        *
+      FROM
+        todo 
+      WHERE
+        priority = '${priority}';`;
+      break;
+    case hasStatusProperty(request.query):
+      getTodosQuery = `
+      SELECT
+        *
+      FROM
+        todo 
+      WHERE
+         status = '${status}';`;
+      break;
+    default:
+      getTodosQuery = `
+      SELECT
+        *
+      FROM
+        todo 
+      WHERE
+        todo LIKE '%${search_q}%';`;
   }
+
+  data = await database.all(getTodosQuery);
+  response.send(data);
 });
 
-app.get("/todos/:todoId/", async (request, response) => {
+app.post("/todos/", async (request, response) => {
+  const { id, todo, priority, status } = request.body;
+  const postTodoQuery = `
+  INSERT INTO
+    todo (id, todo, priority, status)
+  VALUES
+    (${id}, '${todo}', '${priority}', '${status}');`;
+  await database.run(postTodoQuery);
+  response.send("Todo Successfully Added");
+});
+
+app.put("/todos/:todoId/", async (request, response) => {
   const { todoId } = request.params;
-  const getBookQuery = `
+  let updateColumn = "";
+  const requestBody = request.body;
+  switch (true) {
+    case requestBody.status !== undefined:
+      updateColumn = "Status";
+      break;
+    case requestBody.priority !== undefined:
+      updateColumn = "Priority";
+      break;
+    case requestBody.todo !== undefined:
+      updateColumn = "Todo";
+      break;
+  }
+  const previousTodoQuery = `
     SELECT
       *
     FROM
       todo
+    WHERE 
+      id = ${todoId};`;
+  const previousTodo = await database.get(previousTodoQuery);
+
+  const {
+    todo = previousTodo.todo,
+    priority = previousTodo.priority,
+    status = previousTodo.status,
+  } = request.body;
+
+  const updateTodoQuery = `
+    UPDATE
+      todo
+    SET
+      todo='${todo}',
+      priority='${priority}',
+      status='${status}'
     WHERE
       id = ${todoId};`;
-  const report = await db.get(getBookQuery);
-  response.send(report);
+
+  await database.run(updateTodoQuery);
+  response.send(`${updateColumn} Updated`);
 });
 
-app.get("/agenda/", async (request, response) => {
-  const {
-    id,
-    todo,
-    category,
-    search_q = "",
-    priority,
-    status,
-    due_date,
-  } = request.query;
-  const agendaQuery = `SELECT * FROM todo WHERE due_date = '${due_date}' ;`;
-  const data = await db.all(agendaQuery);
-  console.log(data);
-  response.send(data);
+app.delete("/todos/:todoId/", async (request, response) => {
+  const { todoId } = request.params;
+  const deleteTodoQuery = `
+  DELETE FROM
+    todo
+  WHERE
+    id = ${todoId};`;
+
+  await database.run(deleteTodoQuery);
+  response.send("Todo Deleted");
 });
 
 module.exports = app;

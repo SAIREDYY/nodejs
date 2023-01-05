@@ -6,7 +6,7 @@ GET http://localhost:3000/todos/?status=TO%20DO
 
 ###
 //2
-GET http://localhost:3000/todos/?priority=HIGH
+GET http://localhost:3000/todos/?priority=LOW
 
 ###
 ///3
@@ -14,6 +14,10 @@ GET http://localhost:3000/todos/?priority=HIGH&status=IN%20PROGRESS
 ###
 ///4
 GET http://localhost:3000/todos/?search_q=Buy
+
+###
+///5
+GET http://localhost:3000/todos/?category=WORK&status=DONE
 
 ###
 GET  http://localhost:3000/agenda/?date=2021-12-12
